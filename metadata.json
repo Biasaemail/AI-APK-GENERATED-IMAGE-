@@ -1,0 +1,5 @@
+{
+  "name": "AI Image Studio",
+  "description": "Create and edit stunning images with the power of AI. Simply provide a text prompt to generate a new image, or upload your own and describe the changes you want to make using the Gemini 'nano banana' model.",
+  "requestFramePermissions": []
+}

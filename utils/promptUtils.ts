@@ -13,6 +13,27 @@ const getAiClient = (): GoogleGenAI => {
 // A helper function to pick a random element from an array
 const getRandomElement = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
+// Simple retry utility with exponential backoff
+const withRetry = async <T>(apiCall: () => Promise<T>, maxRetries = 2): Promise<T> => {
+    let attempt = 0;
+    while (attempt < maxRetries) {
+        try {
+            return await apiCall();
+        } catch (error) {
+            attempt++;
+            if (attempt >= maxRetries) {
+                console.error(`API call failed after ${maxRetries} attempts.`, error);
+                throw error;
+            }
+            const delay = Math.pow(2, attempt) * 200; // e.g., 400ms, 800ms
+            console.warn(`API call failed, retrying in ${delay}ms... (Attempt ${attempt})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    // This line should not be reachable, but is needed for type safety
+    throw new Error("Retry logic failed unexpectedly.");
+};
+
 // --- "Super Rich" High-Level Concepts to Seed the AI Prompt Generator ---
 // This list is intentionally vast and varied to ensure a wide range of outputs.
 const highLevelConcepts = [
@@ -114,16 +135,18 @@ export const generateInspirationalPrompt = async (): Promise<string> => {
 
   try {
     const ai = getAiClient();
-    const response = await ai.models.generateContent({
+    const apiCall = () => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: finalMetaPrompt,
     });
+    
+    const response = await withRetry(apiCall);
 
     const generatedText = response.text.trim();
     // Clean up any extraneous quotes the model might have added
     return generatedText.replace(/^"|"$/g, '').replace(/\s+/g, ' ').trim();
   } catch (error) {
-    console.error("Error generating prompt with Gemini:", error);
+    console.error("Error generating prompt with Gemini after retries:", error);
     // Provide a high-quality fallback prompt if the API call fails
     return "An epic and highly detailed fantasy matte painting of a lost city nestled in a colossal, overgrown cavern, with waterfalls cascading into a bioluminescent lake. The scene is illuminated by god rays piercing through an opening in the cavern ceiling, creating a mystical and awe-inspiring atmosphere. In the style of Sparth and John Harris, cinematic, 8K resolution, trending on ArtStation.";
   }

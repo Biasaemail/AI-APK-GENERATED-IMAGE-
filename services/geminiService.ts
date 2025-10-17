@@ -10,6 +10,27 @@ const getAiClient = (): GoogleGenAI => {
   return aiInstance;
 };
 
+// Simple retry utility with exponential backoff
+const withRetry = async <T>(apiCall: () => Promise<T>, maxRetries = 2): Promise<T> => {
+    let attempt = 0;
+    while (attempt < maxRetries) {
+        try {
+            return await apiCall();
+        } catch (error) {
+            attempt++;
+            if (attempt >= maxRetries) {
+                console.error(`API call failed after ${maxRetries} attempts.`, error);
+                throw error;
+            }
+            const delay = Math.pow(2, attempt) * 200; // e.g., 400ms, 800ms
+            console.warn(`API call failed, retrying in ${delay}ms... (Attempt ${attempt})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    // This line should not be reachable, but is needed for type safety
+    throw new Error("Retry logic failed unexpectedly.");
+};
+
 const model = 'gemini-2.5-flash-image';
 
 const extractImageData = (response: GenerateContentResponse): string => {
@@ -29,7 +50,7 @@ const extractImageData = (response: GenerateContentResponse): string => {
 export const generateImage = async (prompt: string): Promise<string> => {
   try {
     const ai = getAiClient();
-    const response = await ai.models.generateContent({
+    const apiCall = () => ai.models.generateContent({
       model: model,
       contents: {
         parts: [{ text: prompt }],
@@ -38,10 +59,11 @@ export const generateImage = async (prompt: string): Promise<string> => {
         responseModalities: [Modality.IMAGE],
       },
     });
+    const response = await withRetry(apiCall);
     return extractImageData(response);
   } catch (error) {
     console.error("Error generating image:", error);
-    throw new Error("Failed to generate the image. The prompt may have been blocked or an API error occurred.");
+    throw new Error("Failed to generate image after multiple attempts. The AI service may be temporarily unavailable. Please try again later.");
   }
 };
 
@@ -52,7 +74,7 @@ export const editImage = async (
 ): Promise<string> => {
   try {
     const ai = getAiClient();
-    const response = await ai.models.generateContent({
+    const apiCall = () => ai.models.generateContent({
       model: model,
       contents: {
         parts: [
@@ -71,9 +93,10 @@ export const editImage = async (
         responseModalities: [Modality.IMAGE],
       },
     });
+    const response = await withRetry(apiCall);
     return extractImageData(response);
   } catch (error) {
     console.error("Error editing image:", error);
-    throw new Error("Failed to edit the image. The prompt may have been blocked or an API error occurred.");
+    throw new Error("Failed to edit image after multiple attempts. The AI service may be temporarily unavailable. Please try again later.");
   }
 };

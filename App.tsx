@@ -1,19 +1,57 @@
-import React, { useState, useCallback } from 'react';
-import { AppMode } from './types';
+import React, { useState, useCallback, useEffect } from 'react';
+import { AppMode, ImageRecord } from './types';
 import { generateImage, editImage } from './services/geminiService';
 import { fileToBase64, dataUrlToUploadedImage } from './utils/fileUtils';
+import { generateInspirationalPrompt } from './utils/promptUtils';
 import Spinner from './components/Spinner';
 import Alert from './components/Alert';
 import ImageDisplay from './components/ImageDisplay';
 import ImageUploader from './components/ImageUploader';
 import ModeSelector from './components/ModeSelector';
 import ImageHistory from './components/ImageHistory';
+import SparkleIcon from './components/SparkleIcon';
 
 interface UploadedImage {
   data: string;
   mimeType: string;
   previewUrl: string;
 }
+
+const LOCAL_STORAGE_KEY = 'ai-image-studio-history';
+const MAX_HISTORY_ITEMS = 20;
+
+/**
+ * Saves the image history to localStorage with a robust, self-pruning mechanism.
+ * If saving fails due to storage limitations (QuotaExceededError), it will
+ * remove the oldest item from the history and retry, continuing until the
+ * save is successful or the history is empty.
+ * @param history The array of ImageRecord objects to save.
+ * @returns The final version of the history that was successfully saved.
+ */
+const saveHistoryWithAutoPruning = (history: ImageRecord[]): ImageRecord[] => {
+  let historyToSave = [...history];
+  let saved = false;
+
+  while (!saved && historyToSave.length > 0) {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(historyToSave));
+      saved = true;
+    } catch (e: any) {
+      // Check for QuotaExceededError across different browsers
+      if (e.name === 'QuotaExceededError' || (e.code && (e.code === 22 || e.code === 1014))) {
+        console.warn("LocalStorage is full. Pruning oldest image from history to make space.");
+        // Remove the oldest item (which is at the end of the array) and try again
+        historyToSave.pop();
+      } else {
+        console.error("Failed to save history to localStorage due to an unexpected error:", e);
+        // Don't get stuck in a loop for other errors
+        break;
+      }
+    }
+  }
+  return historyToSave;
+};
+
 
 const Header: React.FC = () => (
   <header className="text-center mb-10">
@@ -36,7 +74,19 @@ function App() {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<ImageRecord[]>([]);
+
+  useEffect(() => {
+    try {
+      const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (storedHistory) {
+        setHistory(JSON.parse(storedHistory));
+      }
+    } catch (error) {
+      console.error("Failed to load history from localStorage:", error);
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  }, []);
 
   const handleImageUpload = useCallback(async (file: File) => {
     setError(null);
@@ -52,7 +102,7 @@ function App() {
   const handleModeChange = (newMode: AppMode) => {
     setMode(newMode);
     setError(null);
-    setGeneratedImageUrl(null); // Bug fix: Clear generated image on mode change
+    setGeneratedImageUrl(null);
     if(newMode === AppMode.GENERATE) {
         setUploadedImage(null);
     }
@@ -75,8 +125,9 @@ function App() {
     setUploadedImage(null);
   }, []);
 
-  const handleSubmit = async () => {
-    if (!prompt.trim()) {
+  const handleSubmit = async (promptOverride?: string) => {
+    const currentPrompt = promptOverride || prompt;
+    if (!currentPrompt.trim()) {
       setError('Please enter a prompt.');
       return;
     }
@@ -87,23 +138,53 @@ function App() {
 
     setIsLoading(true);
     setError(null);
+    setGeneratedImageUrl(null);
 
     try {
       let resultUrl: string;
       if (mode === AppMode.GENERATE) {
-        resultUrl = await generateImage(prompt);
+        resultUrl = await generateImage(currentPrompt);
       } else if (uploadedImage) { 
-        resultUrl = await editImage(prompt, { data: uploadedImage.data, mimeType: uploadedImage.mimeType });
+        resultUrl = await editImage(currentPrompt, { data: uploadedImage.data, mimeType: uploadedImage.mimeType });
       } else {
          throw new Error("Something went wrong. No image available for editing.");
       }
       setGeneratedImageUrl(resultUrl);
-      setHistory(prev => [resultUrl, ...prev].slice(0, 8)); // Add to history, limit to 8
+      
+      const newImageRecord: ImageRecord = {
+        id: `img-${Date.now()}`,
+        imageUrl: resultUrl,
+        prompt: currentPrompt,
+        timestamp: Date.now(),
+      };
+
+      // Add the new record to history and then pass it to the robust saving function
+      setHistory(prev => {
+        const filteredPrev = prev.filter(p => p.imageUrl !== newImageRecord.imageUrl);
+        const newHistory = [newImageRecord, ...filteredPrev].slice(0, MAX_HISTORY_ITEMS);
+        
+        const finalHistory = saveHistoryWithAutoPruning(newHistory);
+        
+        // Check if the newest image was immediately pruned due to its large size
+        if (!finalHistory.some(record => record.id === newImageRecord.id)) {
+           setError("Image generated, but couldn't save to library. Your browser storage is full, and this image is too large to fit.");
+        }
+
+        return finalHistory;
+      });
+
     } catch (e: any) {
       setError(e.message || 'An unknown error occurred.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleInspireMe = async () => {
+    if (isLoading) return;
+    const newPrompt = generateInspirationalPrompt();
+    setPrompt(newPrompt);
+    await handleSubmit(newPrompt);
   };
 
   const handleHistorySelect = (imageUrl: string) => {
@@ -138,7 +219,7 @@ function App() {
           </div>
           
           { mode === AppMode.GENERATE && !generatedImageUrl && !isLoading && (
-              <div className="text-center text-slate-400 border-2 border-dashed border-slate-700 rounded-lg py-12">
+              <div className="text-center text-slate-400 border-2 border-dashed border-slate-700 rounded-lg py-12 md:col-span-2">
                  <p>Your generated image will appear above once created.</p>
               </div>
           )}
@@ -153,13 +234,26 @@ function App() {
               disabled={isLoading}
               aria-label="Prompt for AI image generation"
             />
-            <button
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center h-12"
-            >
-              {isLoading ? <Spinner /> : (mode === AppMode.GENERATE ? 'Generate Image' : 'Edit Image')}
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4">
+              <button
+                onClick={() => handleSubmit()}
+                disabled={isLoading}
+                className="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center h-12"
+              >
+                {isLoading ? <Spinner /> : (mode === AppMode.GENERATE ? 'Generate Image' : 'Edit Image')}
+              </button>
+              {mode === AppMode.GENERATE && (
+                  <button
+                      onClick={handleInspireMe}
+                      disabled={isLoading}
+                      className="w-full sm:w-auto flex-shrink-0 bg-purple-600 text-white font-bold py-3 px-4 rounded-md hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-purple-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 h-12"
+                      title="Generate a random prompt and image"
+                  >
+                      <SparkleIcon />
+                      <span className="hidden sm:inline">Inspire Me</span>
+                  </button>
+              )}
+            </div>
           </div>
 
           {error && <Alert message={error} type="error" />}

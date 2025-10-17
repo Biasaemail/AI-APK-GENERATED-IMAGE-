@@ -1,10 +1,7 @@
 
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-  throw new Error("The API_KEY environment variable is not set. Please set it in your environment.");
-}
+const API_KEY = "AIzaSyBprgMnPzFM9QGww23wirX2BHkHrzPn4pI";
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 const model = 'gemini-2.5-flash-image';

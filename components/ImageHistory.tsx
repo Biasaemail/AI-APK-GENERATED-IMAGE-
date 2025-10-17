@@ -1,4 +1,5 @@
 import React from 'react';
+import { ImageRecord } from '../types';
 
 const EditIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -16,7 +17,7 @@ const ViewIcon: React.FC = () => (
 
 
 interface ImageHistoryProps {
-  images: string[];
+  images: ImageRecord[];
   onImageSelect: (imageUrl: string) => void;
   onUseForEditing: (imageUrl: string) => void;
 }
@@ -30,12 +31,12 @@ const ImageHistory: React.FC<ImageHistoryProps> = ({ images, onImageSelect, onUs
     <section className="mt-12">
       <h2 className="text-2xl font-bold text-slate-200 mb-6">Image Library</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-        {images.map((imgUrl, index) => (
-          <div key={index} className="relative aspect-square rounded-lg overflow-hidden group shadow-lg">
-            <img src={imgUrl} alt={`Generated image ${index + 1}`} className="w-full h-full object-cover" />
+        {images.map((record) => (
+          <div key={record.id} className="relative aspect-square rounded-lg overflow-hidden group shadow-lg">
+            <img src={record.imageUrl} alt={record.prompt} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
                <button
-                 onClick={() => onImageSelect(imgUrl)}
+                 onClick={() => onImageSelect(record.imageUrl)}
                  className="p-2 rounded-full bg-slate-900/70 text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500"
                  title="View Image"
                  aria-label="View Image"
@@ -43,7 +44,7 @@ const ImageHistory: React.FC<ImageHistoryProps> = ({ images, onImageSelect, onUs
                  <ViewIcon />
                </button>
                <button
-                 onClick={() => onUseForEditing(imgUrl)}
+                 onClick={() => onUseForEditing(record.imageUrl)}
                  className="p-2 rounded-full bg-slate-900/70 text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500"
                  title="Use for Editing"
                  aria-label="Use for Editing"

@@ -21,3 +21,16 @@ export const fileToBase64 = (file: File): Promise<{ data: string; mimeType: stri
     reader.onerror = (error) => reject(error);
   });
 };
+
+export const dataUrlToUploadedImage = (dataUrl: string): { data: string; mimeType: string; previewUrl: string } => {
+  const [header, data] = dataUrl.split(',');
+  if (!header || !data) {
+    throw new Error("Invalid data URL format.");
+  }
+  const mimeTypeMatch = header.match(/:(.*?);/);
+  if (!mimeTypeMatch || !mimeTypeMatch[1]) {
+    throw new Error("Could not determine MIME type from data URL header.");
+  }
+  const mimeType = mimeTypeMatch[1];
+  return { data, mimeType, previewUrl: dataUrl };
+};

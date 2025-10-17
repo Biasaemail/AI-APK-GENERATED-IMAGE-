@@ -21,15 +21,15 @@ const EditIcon: React.FC = () => (
 
 const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeChange }) => {
     const getButtonClasses = (mode: AppMode) => {
-        const base = "px-5 py-2 rounded-md font-semibold transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-indigo-500 text-sm flex items-center gap-2";
+        const base = "px-5 py-2 rounded-md font-semibold transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-purple-500 text-sm flex items-center gap-2";
         if (currentMode === mode) {
-            return `${base} bg-indigo-600 text-white shadow-lg`;
+            return `${base} bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg`;
         }
-        return `${base} bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white`;
+        return `${base} bg-white/5 text-slate-300 hover:bg-white/10`;
     };
 
     return (
-        <div className="flex bg-slate-900/50 p-1 rounded-lg self-center ring-1 ring-slate-700">
+        <div className="flex bg-black/30 p-1 rounded-lg self-center border border-white/10">
             <button onClick={() => onModeChange(AppMode.GENERATE)} className={getButtonClasses(AppMode.GENERATE)}>
                 <GenerateIcon /> Generate
             </button>

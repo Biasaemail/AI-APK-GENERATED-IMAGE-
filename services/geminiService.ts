@@ -1,9 +1,15 @@
-
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 
-const API_KEY = "AIzaSyBprgMnPzFM9QGww23wirX2BHkHrzPn4pI";
+// --- Singleton pattern for the GoogleGenAI client ---
+let aiInstance: GoogleGenAI | null = null;
+const getAiClient = (): GoogleGenAI => {
+  if (!aiInstance) {
+    // This will now only be called when needed, preventing a startup crash.
+    aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+  return aiInstance;
+};
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 const model = 'gemini-2.5-flash-image';
 
 const extractImageData = (response: GenerateContentResponse): string => {
@@ -22,6 +28,7 @@ const extractImageData = (response: GenerateContentResponse): string => {
 
 export const generateImage = async (prompt: string): Promise<string> => {
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: model,
       contents: {
@@ -44,6 +51,7 @@ export const editImage = async (
   image: { data: string; mimeType: string }
 ): Promise<string> => {
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: model,
       contents: {

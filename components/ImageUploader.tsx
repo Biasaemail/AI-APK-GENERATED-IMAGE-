@@ -46,8 +46,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, previewUrl
   };
 
   const borderClasses = isDragging 
-    ? "border-indigo-500" 
-    : "border-slate-600 group-hover:border-indigo-500";
+    ? "border-purple-500" 
+    : "border-white/10 group-hover:border-purple-500";
 
   return (
      <div className="w-full flex flex-col items-center gap-4">
@@ -55,7 +55,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, previewUrl
         <div className="relative w-full group">
             <label 
                 htmlFor="file-upload" 
-                className={`cursor-pointer aspect-square w-full bg-slate-800/50 rounded-lg flex items-center justify-center border-2 border-dashed ${borderClasses} transition-colors duration-200 overflow-hidden`}
+                className={`cursor-pointer aspect-square w-full bg-black/20 rounded-lg flex items-center justify-center border-2 border-dashed ${borderClasses} transition-colors duration-200 overflow-hidden`}
                 onDragEnter={(e) => handleDragEvents(e, true)}
                 onDragLeave={(e) => handleDragEvents(e, false)}
                 onDragOver={(e) => handleDragEvents(e, true)}
@@ -74,7 +74,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, previewUrl
             {previewUrl && (
                 <button 
                     onClick={onClear}
-                    className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/70 text-white hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-red-500 transition-colors"
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-red-500 transition-colors"
                     title="Remove image"
                     aria-label="Remove image"
                 >

@@ -10,6 +10,10 @@ import ImageUploader from './components/ImageUploader';
 import ModeSelector from './components/ModeSelector';
 import ImageHistory from './components/ImageHistory';
 import SparkleIcon from './components/SparkleIcon';
+import CopyIcon from './components/CopyIcon';
+import CheckIcon from './components/CheckIcon';
+import ConfirmationModal from './components/ConfirmationModal';
+
 
 interface UploadedImage {
   data: string;
@@ -56,14 +60,14 @@ const saveHistoryWithAutoPruning = (history: ImageRecord[]): ImageRecord[] => {
 const Header: React.FC = () => (
   <header className="text-center mb-10">
     <div className="inline-flex items-center gap-3 justify-center">
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.573L16.5 21.75l-.398-1.177a3.375 3.375 0 00-2.455-2.455L12.75 18l1.177-.398a3.375 3.375 0 002.455-2.455L16.5 14.25l.398 1.177a3.375 3.375 0 002.455 2.455L20.25 18l-1.177.398a3.375 3.375 0 00-2.455 2.455z" />
       </svg>
-      <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500 tracking-tight sm:text-5xl">
+      <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-fuchsia-500 tracking-tight sm:text-5xl">
         AI Image Studio
       </h1>
     </div>
-    <p className="text-slate-400 mt-3 text-lg">Create and edit stunning images with the power of Gemini.</p>
+    <p className="text-slate-300 mt-3 text-lg">Create and edit stunning images with the power of Gemini.</p>
   </header>
 );
 
@@ -73,8 +77,11 @@ function App() {
   const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isInspiring, setIsInspiring] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ImageRecord[]>([]);
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [isClearConfirmVisible, setIsClearConfirmVisible] = useState<boolean>(false);
 
   useEffect(() => {
     try {
@@ -124,6 +131,22 @@ function App() {
   const handleClearUpload = useCallback(() => {
     setUploadedImage(null);
   }, []);
+  
+  const handleCopyPrompt = () => {
+      if (!prompt || isCopied) return;
+      navigator.clipboard.writeText(prompt).then(() => {
+          setIsCopied(true);
+          setTimeout(() => setIsCopied(false), 2000);
+      }).catch(err => {
+          console.error('Failed to copy text: ', err);
+      });
+  };
+  
+  const handleClearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setIsClearConfirmVisible(false);
+  };
 
   const handleSubmit = async (promptOverride?: string) => {
     const currentPrompt = promptOverride || prompt;
@@ -157,21 +180,23 @@ function App() {
         prompt: currentPrompt,
         timestamp: Date.now(),
       };
+      
+      const updatedHistory = [newImageRecord, ...history.filter(p => p.imageUrl !== newImageRecord.imageUrl)].slice(0, MAX_HISTORY_ITEMS);
+      setHistory(updatedHistory);
+      
+      // Defer the potentially slow localStorage write to prevent UI blocking
+      setTimeout(() => {
+          const finalHistory = saveHistoryWithAutoPruning(updatedHistory);
+          // If pruning removed items (including potentially the new one), resync state
+          if (finalHistory.length !== updatedHistory.length) {
+              setHistory(finalHistory);
+          }
+           // Check if the newest image was immediately pruned due to its large size
+          if (!finalHistory.some(record => record.id === newImageRecord.id)) {
+             setError("Image generated, but couldn't save to library. Your browser storage is full, and this image is too large to fit.");
+          }
+      }, 10);
 
-      // Add the new record to history and then pass it to the robust saving function
-      setHistory(prev => {
-        const filteredPrev = prev.filter(p => p.imageUrl !== newImageRecord.imageUrl);
-        const newHistory = [newImageRecord, ...filteredPrev].slice(0, MAX_HISTORY_ITEMS);
-        
-        const finalHistory = saveHistoryWithAutoPruning(newHistory);
-        
-        // Check if the newest image was immediately pruned due to its large size
-        if (!finalHistory.some(record => record.id === newImageRecord.id)) {
-           setError("Image generated, but couldn't save to library. Your browser storage is full, and this image is too large to fit.");
-        }
-
-        return finalHistory;
-      });
 
     } catch (e: any) {
       setError(e.message || 'An unknown error occurred.');
@@ -181,23 +206,31 @@ function App() {
   };
 
   const handleInspireMe = async () => {
-    if (isLoading) return;
-    const newPrompt = generateInspirationalPrompt();
-    setPrompt(newPrompt);
-    await handleSubmit(newPrompt);
+    if (isLoading || isInspiring) return;
+    setIsInspiring(true);
+    setError(null);
+    try {
+      const newPrompt = await generateInspirationalPrompt();
+      setPrompt(newPrompt);
+    } catch (e) {
+      console.error("Failed to generate inspirational prompt:", e);
+      setError("Could not generate a new prompt. Please try again.");
+    } finally {
+      setIsInspiring(false);
+    }
   };
 
-  const handleHistorySelect = (imageUrl: string) => {
+  const handleHistorySelect = useCallback((imageUrl: string) => {
     setGeneratedImageUrl(imageUrl);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6 lg:p-8 flex flex-col antialiased">
+    <div className="min-h-screen text-white p-4 sm:p-6 lg:p-8 flex flex-col antialiased">
       <div className="w-full max-w-5xl mx-auto">
         <Header />
 
-        <main className="bg-slate-800/50 p-6 sm:p-8 rounded-xl shadow-2xl ring-1 ring-white/10 flex flex-col gap-8">
+        <main className="bg-black/30 backdrop-blur-lg p-6 sm:p-8 rounded-xl shadow-2xl border border-white/10 flex flex-col gap-8">
           <ModeSelector currentMode={mode} onModeChange={handleModeChange} />
           
           <div className="grid gap-8 grid-cols-1 md:grid-cols-2">
@@ -219,38 +252,54 @@ function App() {
           </div>
           
           { mode === AppMode.GENERATE && !generatedImageUrl && !isLoading && (
-              <div className="text-center text-slate-400 border-2 border-dashed border-slate-700 rounded-lg py-12 md:col-span-2">
+              <div className="text-center text-slate-500 border-2 border-dashed border-slate-600 rounded-lg py-12 md:col-span-2">
                  <p>Your generated image will appear above once created.</p>
               </div>
           )}
 
           <div className="flex flex-col gap-4">
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={mode === AppMode.EDIT ? "Describe the changes you want to make..." : "Describe the image you want to create..."}
-              className="w-full p-3 bg-slate-700 rounded-md placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200 resize-none"
-              rows={3}
-              disabled={isLoading}
-              aria-label="Prompt for AI image generation"
-            />
+            <div className="relative w-full">
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={mode === AppMode.EDIT ? "Describe the changes you want to make..." : "Describe the image you want to create..."}
+                  className="w-full p-3 pr-12 bg-slate-800/50 rounded-md placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 transition duration-200 resize-none border border-transparent focus:border-purple-500"
+                  rows={3}
+                  disabled={isLoading || isInspiring}
+                  aria-label="Prompt for AI image generation"
+                />
+                {prompt && (
+                    <button
+                        onClick={handleCopyPrompt}
+                        className="absolute top-3 right-3 p-2 rounded-full bg-slate-700/50 text-slate-300 hover:bg-slate-600/70 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-purple-500"
+                        title={isCopied ? "Copied!" : "Copy Prompt"}
+                        aria-label={isCopied ? "Prompt copied to clipboard" : "Copy prompt to clipboard"}
+                    >
+                        {isCopied ? <CheckIcon /> : <CopyIcon />}
+                    </button>
+                )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4">
               <button
                 onClick={() => handleSubmit()}
-                disabled={isLoading}
-                className="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center h-12"
+                disabled={isLoading || isInspiring}
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:from-purple-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-purple-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center h-12 shadow-lg hover:shadow-purple-500/30"
               >
-                {isLoading ? <Spinner /> : (mode === AppMode.GENERATE ? 'Generate Image' : 'Edit Image')}
+                {isLoading ? <Spinner className="h-8 w-8" /> : (mode === AppMode.GENERATE ? 'Generate Image' : 'Edit Image')}
               </button>
               {mode === AppMode.GENERATE && (
                   <button
                       onClick={handleInspireMe}
-                      disabled={isLoading}
-                      className="w-full sm:w-auto flex-shrink-0 bg-purple-600 text-white font-bold py-3 px-4 rounded-md hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-purple-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 h-12"
-                      title="Generate a random prompt and image"
+                      disabled={isLoading || isInspiring}
+                      className="w-full sm:w-auto flex-shrink-0 bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white font-bold py-3 px-4 rounded-md hover:from-fuchsia-500 hover:to-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-fuchsia-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 h-12 shadow-lg hover:shadow-fuchsia-500/30"
+                      title="Generate a random prompt"
                   >
-                      <SparkleIcon />
-                      <span className="hidden sm:inline">Inspire Me</span>
+                      {isInspiring ? <Spinner className="h-6 w-6" /> : (
+                        <>
+                          <SparkleIcon />
+                          <span className="hidden sm:inline">Inspire Me</span>
+                        </>
+                      )}
                   </button>
               )}
             </div>
@@ -259,10 +308,25 @@ function App() {
           {error && <Alert message={error} type="error" />}
         </main>
         
-        <ImageHistory images={history} onImageSelect={handleHistorySelect} onUseForEditing={handleUseForEditing} />
+        <ImageHistory 
+            images={history} 
+            onImageSelect={handleHistorySelect} 
+            onUseForEditing={handleUseForEditing} 
+            onClearHistory={() => setIsClearConfirmVisible(true)}
+        />
       </div>
-       <footer className="text-center mt-8 text-slate-500 text-sm">
-        Powered by Sofwan
+
+       <ConfirmationModal
+          isOpen={isClearConfirmVisible}
+          onClose={() => setIsClearConfirmVisible(false)}
+          onConfirm={handleClearHistory}
+          title="Clear Image Library?"
+          message="Are you sure you want to permanently delete all images from your library? This action cannot be undone."
+          confirmButtonText="Yes, Clear All"
+        />
+
+      <footer className="text-center mt-8 text-slate-400 text-sm">
+        Powered by <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-400 transition-colors">Google's Gemini Model</a>
       </footer>
     </div>
   );
